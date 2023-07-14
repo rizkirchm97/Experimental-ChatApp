@@ -1,0 +1,6 @@
+
+enum NetworkState  {
+  WEBSOCKET_PROTOCOL,
+  SSE_PROTOCOL,
+  HTTP1_PROTOCOL,
+}
