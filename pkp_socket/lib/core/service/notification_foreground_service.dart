@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
@@ -36,6 +37,17 @@ class NotificationForegroundService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
+    if (Platform.isIOS) {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
+    }
+
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: _onStart,
@@ -45,7 +57,14 @@ class NotificationForegroundService {
         foregroundServiceNotificationId: 1,
       ),
       iosConfiguration: IosConfiguration(
+        // auto start service
         autoStart: true,
+
+        // this will be executed when app is in foreground in separated isolate
+        onForeground: _onStart,
+
+        // you have to enable background fetch capability on xcode project
+        onBackground: onIosBackground,
       ),
     );
 
@@ -55,6 +74,20 @@ class NotificationForegroundService {
     // Assuming you have a WebSocket stream called 'webSocketStream'
     // final resultConnectionState = await repo.onMessage(NetworkState.WEBSOCKET_PROTOCOL);
     // handleWebSocketMessages(resultConnectionState?.value1 as Stream);
+  }
+
+  @pragma('vm:entry-point')
+  static Future<bool> onIosBackground(ServiceInstance service) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    DartPluginRegistrant.ensureInitialized();
+
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.reload();
+    final log = preferences.getStringList('log') ?? <String>[];
+    log.add(DateTime.now().toIso8601String());
+    await preferences.setStringList('log', log);
+
+    return true;
   }
 
   static Future<void> _onStart(ServiceInstance serviceInstance) async {
@@ -94,8 +127,13 @@ class NotificationForegroundService {
             importance: Importance.min,
             priority: Priority.low);
 
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
+    const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ));
 
     await flutterLocalNotificationsPlugin.show(
       0,
